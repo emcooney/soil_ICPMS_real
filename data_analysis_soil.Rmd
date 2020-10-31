@@ -70,3 +70,7 @@ ICPMS_merged
 ```{r, warning=FALSE}
 rm(list=setdiff(ls(), "ICPMS_merged"))
 ```
+
+```{r}
+write.csv(ICPMS_merged, file = "~/Chem 313/soil_ICPMS_real/data/tidy_ICPMS.csv")
+```

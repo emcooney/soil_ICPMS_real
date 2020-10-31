@@ -37,3 +37,7 @@ AA_merged_tidy <- AA_merged%>%
 
 view(AA_merged_tidy)
 ```
+
+```{r}
+write.csv(AA_merged_tidy, file = "~/Chem 313/soil_ICPMS_real/data/tidy_AA.csv")
+```
