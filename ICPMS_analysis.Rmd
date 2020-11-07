@@ -1,0 +1,163 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+```
+
+```{r}
+ICPMS_merged
+```
+
+```{r}
+sample_sites <- unique(filter(ICPMS_merged, Site!="MB", Site!="")$Site)
+metals_analyzed <- unique(ICPMS_merged$metal)
+
+sample_sites
+metals_analyzed
+```
+
+```{r Calibration}
+ICPMS_cal <- NULL
+for (unique_metal in metals_analyzed){
+  
+  cal <- ICPMS_merged %>%
+    filter(Type == "Cal1" | Type == "Cal2" | Type == "Cal3") %>%
+    filter(metal == unique_metal) %>%
+    select(conc = Concentration, signal = CPS, RSD)
+  
+  w <- 1/(cal$signal*cal$RSD)^2
+  model <- lm(cal$signal ~ cal$conc, weights = w)
+  
+  slope <- model$coefficients[2]
+  intercept <- model$coefficients[1]
+  slope_std <- summary(model)$coefficients[2,2]
+  intercept_std <- summary(model)$coefficients[1,2]
+  
+  plot(cal$signal ~ cal$conc,
+       xlab = paste("Concentration of ", unique_metal, "(ppb)"),
+       ylab = "Counts per second")+
+    abline(model, col="red")+
+    title(paste("Calibration for ", unique_metal))
+  
+  equation <- data_frame(metal= unique_metal, slope, slope_std, intercept, intercept_std)
+  ICPMS_cal <- rbind(ICPMS_cal, equation)
+}
+
+ICPMS_cal
+
+remove(equation, cal, slope, slope_std, intercept, intercept_std, w, model, unique_metal)
+```
+
+```{r}
+sample_analysis <- function(unique_site){
+  concentration_data <- NULL
+  for (unique_metal in metals_analyzed){
+    sample <- filter(ICPMS_merged, metal == unique_metal, Site == unique_site)
+    data <- NULL
+    
+    for(ID in sample$Sample.Key){
+      sample_data <- filter(sample, Sample.Key == ID)
+      cal <- filter(ICPMS_cal, metal == unique_metal)
+      
+      m <- cal$slope
+      b <- cal$intercept
+      y <- sample_data$CPS
+      
+      b_e <- cal$intercept_std
+      m_e <- cal$slope_std
+      
+      x <- (y-b)/m
+      
+      rsd <- sample_data$RSD
+      cps <- sample_data$CPS
+      
+      e_yb <- sqrt((rsd)^2 + (b_e)^2)
+      yb <- cps-b
+      e_x <- x*sqrt((e_yb/yb)^2+(m_e/m)^2)
+      
+      data <- rbind(data, data_frame(Sample.Key = ID, x, e_x))
+      if (unique_site!="MB"){
+        concentration_data <- data_frame(Sample.Key = sample_data$Sample.Key, Analyst = sample_data$Analyst, metal = unique_metal, Site = unique_site, conc_dil = x,
+                                         conc_dil_error = e_x)%>%
+          rbind(concentration_data)
+      }
+      if (unique_site=="MB"){
+        x <- mean(data$x)
+        e_x <- sd(data$x)
+        concentration_data <- data_frame(metal = unique_metal, Site = unique_site, conc_dil = x, conc_dil_error = e_x)%>%
+          rbind(concentration_data)
+      }
+    }
+  }
+    return(concentration_data)
+}
+```
+
+```{r}
+run_sites <- function(Function){
+  value <- NULL
+  for(sites in sample_sites){
+    site_value <- sample_analysis(sites)
+    value <- rbind(site_value, value)
+  }
+  return(value)
+}
+```
+
+```{r}
+MB <- sample_analysis("MB")
+uncor_sample <- run_sites(sample_analysis)
+
+MB 
+uncor_sample
+```
+
+```{r}
+sample_data_mb <- NULL
+
+for (unique_metal in metals_analyzed){
+  MB_metal <- filter(MB, metal==unique_metal)
+  sample_metal <- filter(uncor_sample, metal==unique_metal)
+  conc_dil_blanked <- sample_metal$conc_dil-MB_metal$conc_dil
+  
+  conc_dil_blanked_error <- sqrt((sample_metal$conc_dil_error)^2 + (MB_metal$conc_dil_error)^2)
+  
+  sample_data_mb <- sample_metal %>%
+    mutate(conc_dil_blanked, conc_dil_blanked_error)%>%
+    rbind(sample_data_mb)
+}
+
+sample_data_mb
+```
+
+```{r}
+vol_e <- 1
+mass_e <- .001
+dil_1010_e <- sqrt(1^2 + 10^2)
+dil_e <- sqrt((dil_1010_e/1010)^2 + (1/10)^2)
+
+sample_data <- merge(ICPMS_merged, sample_data_mb)%>%
+  unique()%>%
+  mutate(conc_blanked = conc_dil_blanked*(Total.Volume/1000)/(Mass.of.Soil/1000)*101,
+         conc_blanked_error = conc_blanked*sqrt((conc_dil_blanked_error/conc_dil_blanked)^2 + (dil_e/101)^2 + (mass_e/Mass.of.Soil)^2 + (vol_e/Total.Volume)^2),
+         conc_unblanked = conc_dil*(Total.Volume/1000)/(Mass.of.Soil/1000)*101,
+         conc_unblanked_error = conc_unblanked*sqrt((conc_dil_error/conc_dil)^2 + (dil_e/101)^2 + (mass_e/Mass.of.Soil)^2 + (vol_e/Total.Volume)^2))%>%
+  select(-Concentration,
+         -Type,
+         -Mass.of.Soil,
+         -Total.Volume,
+         -CPS,
+         -RSD,
+         -conc_dil_blanked,
+         -conc_dil_blanked_error,
+         -conc_dil,
+         -conc_dil_error)
+```
