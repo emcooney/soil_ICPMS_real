@@ -1,0 +1,147 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup, include=FALSE}
+library(tidyverse)
+```
+
+```{r}
+AA_merged_tidy
+```
+
+```{r}
+sample_sites <- c("F", "QC", "D", "E", "C", "B", "A")
+
+sample_sites
+```
+
+```{r Calibration}
+
+cal <- AA_merged_tidy %>%
+    filter(Type == "CalStd" | Type == "CalStd2" | Type == "CalStd4") %>%
+    select(conc = Concentration, signal = Mean.Abs.)
+  
+  model <- lm(cal$signal ~ cal$conc)
+  
+  slope <- model$coefficients[2]
+  intercept <- model$coefficients[1]
+  slope_std <- summary(model)$coefficients[2,2]
+  intercept_std <- summary(model)$coefficients[1,2]
+  
+  plot(cal$signal ~ cal$conc,
+       xlab = "Concentration of Cr (ppm)",
+       ylab = "Counts per second")
+  abline(model, col="red")+
+  title("Calibration for Cr")
+  
+  equation <- data_frame(slope, slope_std, intercept, intercept_std)
+
+remove(cal, slope, slope_std, intercept, intercept_std, model)
+```
+
+```{r}
+sample_analysis2 <- function(unique_site){
+  concentration_data <- NULL
+
+    sample <- filter(AA_merged_tidy, Site == unique_site)%>%
+      mutate(X.RSD=as.numeric(X.RSD))
+    data <- NULL
+    
+    for(ID in sample$Sample.Key){
+      sample_data <- filter(sample, Sample.Key == ID)
+      
+      m <- equation$slope
+      b <- equation$intercept
+      y <- sample_data$Mean.Abs.
+      
+      b_e <- equation$intercept_std
+      m_e <- equation$slope_std
+      
+      x <- (y-b)/m
+      
+      rsd <- ((sample_data$X.RSD/100)*sample_data$Mean.Abs.)
+      cps <- sample_data$Mean.Abs.
+      
+      e_x <- sample_data$Mean.Abs.*sample_data$X.RSD/100
+      
+      data <- rbind(data, data_frame(Sample.Key = ID, x, e_x))
+      if (unique_site!="MB"){
+        concentration_data <- data_frame(Sample.Key = sample_data$Sample.Key, Analyst = sample_data$Analyst, Site = unique_site, conc_dil = x*1000, conc_dil_error = e_x*1000)%>%
+          rbind(concentration_data)
+      }
+      if (unique_site=="MB"){
+        x <- mean(data$x*1000)
+        e_x <- sd(data$x*1000)
+        concentration_data <- data_frame(Sample.Key = sample_data$Sample.Key, Analyst = sample_data$Analyst, Site = unique_site, conc_dil = x, conc_dil_error = e_x)%>%
+          rbind(concentration_data)
+      }
+    }
+    return(concentration_data)
+}
+```
+
+```{r}
+run_sites <- function(Function){
+  value <- NULL
+  for(sites in sample_sites){
+    site_value <- Function(sites)
+    value <- rbind(site_value, value)
+  }
+  return(value)
+}
+```
+
+```{r}
+MB2 <- sample_analysis2("MB")
+uncor_sample2 <- run_sites(sample_analysis2)
+
+MB2
+uncor_sample2
+```
+
+```{r}
+
+  MB_metal <- MB2$conc_dil
+  conc_dil_blanked <- uncor_sample2$conc_dil-mean(MB_metal)
+  
+  conc_dil_blanked_error <- sqrt((uncor_sample2$conc_dil_error)^2 + (sd(MB_metal))^2)
+  
+  sample_data_mb2 <- uncor_sample2 %>%
+    mutate(conc_dil_blanked, conc_dil_blanked_error)
+
+#sample_data_mb2 <- MB2%>%
+  #mutate(conc_dil_blanked=NA, conc_dil_blanked_error=NA)%>%
+  #rbind(sample_data_mb2)
+
+```
+
+```{r}
+vol_e <- 1
+mass_e <- .001
+
+sample_data_AA <- merge(AA_merged_tidy, sample_data_mb2)%>%
+  unique()%>%
+  mutate(conc_blanked = conc_dil_blanked*(Total.Volume/1000)/(Mass.of.Soil/1000),
+         conc_blanked_error = conc_blanked*sqrt((conc_dil_blanked_error/conc_dil_blanked)^2 + (mass_e/Mass.of.Soil)^2 + (vol_e/Total.Volume)^2),
+         conc_unblanked = conc_dil*(Total.Volume/1000)/(Mass.of.Soil/1000),
+         conc_unblanked_error = conc_unblanked*sqrt((conc_dil_error/conc_dil)^2 + (mass_e/Mass.of.Soil)^2 + (vol_e/Total.Volume)^2))%>%
+  select(-Concentration,
+         -Type,
+         -Mass.of.Soil,
+         -Total.Volume,
+         -X.RSD,
+         -conc_dil_blanked,
+         -conc_dil_blanked_error,
+         -conc_dil,
+         -conc_dil_error)
+```
+
+```{r}
+#rm(list= ls() [!(ls() %in% c("sample_data", "sample_data_AA", "MB2"))])
+```

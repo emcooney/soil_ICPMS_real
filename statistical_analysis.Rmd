@@ -1,0 +1,112 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+#MB <- filter(sample_data, Site=="MB")
+sample_data <- filter(sample_data, Site!="MB")
+```
+
+```{r}
+#MB2 <- filter(sample_data_AA, Site=="MB")
+sample_data_AA <- filter(sample_data_AA, Site!="MB")
+```
+
+
+```{r}
+MB2_avgs <- group_by(MB2, Site)%>%
+  summarise(AA_avg=mean(conc_dil), AA_sd=sd(conc_dil), AA_CI=(qnorm(0.975)*AA_sd/sqrt(length(conc_dil))), .groups='drop')
+```
+
+```{r}
+MB_avgs <- group_by(MB, metal)%>%
+  group_by(Site, .add=TRUE)%>%
+  summarise(ICPMS_avg=mean(conc_dil), ICPMS_sd=sd(conc_dil), ICPMS_CI=(qnorm(0.975)*ICPMS_sd/sqrt(length(conc_dil))), .groups='drop')
+```
+
+```{r}
+#AA avg per site
+AA_avgs <- group_by(sample_data_AA, Site)%>%
+  summarise(AA_avg=mean(conc_blanked), AA_sd=sd(conc_blanked),  AA_CI=(qnorm(0.975)*AA_sd/sqrt(length(conc_blanked))), .groups='drop')
+
+AA_wMB <- rbind(AA_avgs, MB2_avgs)%>%
+  select(Site, 'Average [] (ppb)'=AA_avg, 'Standard Deviation'=AA_sd, '95% CI'=AA_CI)
+AA_wMB
+
+ggplot(filter(AA_avgs, Site!="QC"), aes(y=AA_avg, x=Site)) +
+  ylab("Average Concentration (ppm)") +
+  geom_bar(position = "dodge", stat = "identity", fill="darkorchid1") +
+  geom_errorbar(aes(ymin=AA_avg-AA_sd, ymax=AA_avg+AA_sd), width=.2, position=position_dodge(.9))
+```
+
+```{r}
+#ICPMS avg per metal separated by site
+ICPMS_avgs <- group_by(sample_data, metal)%>%
+  group_by(Site, add = TRUE)%>%
+  summarise(ICPMS_avg=mean(conc_blanked), ICPMS_sd=sd(conc_blanked), ICPMS_CI=(qnorm(0.975)*ICPMS_sd/sqrt(length(conc_blanked))), .groups='drop')
+
+ICPMS_avgs
+MB_avgs
+
+ICPMS_wMB <- rbind(ICPMS_avgs, MB_avgs)%>%
+  select(metal, Site, 'Average [] (ppb)'=ICPMS_avg, 'Standard Deviation'=ICPMS_sd, '95% CI'=ICPMS_CI)
+ICPMS_wMB
+#I think all I have to do for deliverable #6 is convert these averages to mg/kg
+
+ggplot(filter(ICPMS_avgs, Site!="QC", metal!="Pb208"), aes(fill=metal, y=ICPMS_avg, x=Site)) +
+  ylab("Average Concentration (ppm)") +
+  geom_bar(position = "dodge", stat = "identity") +
+  geom_errorbar(aes(ymin=ICPMS_avg-ICPMS_sd, ymax=ICPMS_avg+ICPMS_sd), width=.2, position=position_dodge(.9))
+
+ggplot(filter(ICPMS_avgs, Site!="QC", metal=="Pb208"), aes(fill=metal, y=ICPMS_avg, x=Site)) +
+  ylab("Average Concentration (ppm)") +
+  geom_bar(position = "dodge", stat = "identity") +
+  geom_errorbar(aes(ymin=ICPMS_avg-ICPMS_sd, ymax=ICPMS_avg+ICPMS_sd), width=.2, position=position_dodge(.9))
+```
+
+```{r}
+see <- filter(ICPMS_avgs, Site=="QC")
+
+metal <- c("Cd", "Cr", "Pb")
+measured <- c(2553.055, 57765.584, 1191684.879)
+QC_error <- c(482.3667, 11270.7844, 252935.994)
+NIST <- c(2940, 121900, 150000)
+NIST_error <- c(290, 3800, 17000)
+percent_error <- c(abs(100*(measured-NIST)/NIST))
+percent_recovery <- c(100*measured/NIST)
+t_t <- abs((measured-NIST))/(sqrt((QC_error)^2/6 +(NIST)^2/6))
+
+QC_table <- data.frame(metal, "QC ppb"=measured, "NIST ppb"=NIST, QC_error, NIST_error, percent_recovery, 'T.test'=t_t)
+```
+
+```{r}
+site_compar1 <- merge(AA_avgs, filter(ICPMS_avgs, metal=="Cr52"))%>%
+  select(Site, 'AA Avg [] (ppb)'=AA_avg, 'ICP-MS Avg [] (ppb)'=ICPMS_avg, AA_sd, ICPMS_sd)
+
+site_compar <- cbind(site_compar1, F_test=((site_compar1$ICPMS_sd)^2/(site_compar1$AA_sd)^2))
+
+site_compar
+```
+
+```{r}
+Site <- c("A", "B", "C", "D", "E", "F", "QC", "A", "B", "C", "D", "E", "F", "QC")
+Method <- c(rep("AA", 7), rep("ICP-MS", 7))
+Average <- c(23484.877, 15924.081, 26924.776, 9330.527, 13763.713, 7500.0035, 48836.215, 23670.21, 16853.38, 33941.94, 12897.61, 19424.61, 11488.80, 57765.58)
+sd <- c(7432.851, 5050.609, 13258.210, 3758.188, 6972.055, 5131.379, 9822.295, 7603.983, 5047.711, 16941.639, 4465.798, 8843.413, 7997.611, 11270.784)
+
+df <- data.frame(Site, Method, Average, sd)
+
+ggplot(df, aes(fill=Method, y=Average, x=Site)) +
+  ylab("Average Concentration (ppm)") +
+  geom_bar(position = "dodge", stat = "identity") +
+  geom_errorbar(aes(ymin=Average-sd, ymax=Average+sd), width=.2, position=position_dodge(.9))
+```

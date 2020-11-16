@@ -13,7 +13,7 @@ library(tidyverse);
 library(readr);
 
 
-AA_imported <- read.csv("~/Chem 313/soil_ICPMS_real/Soil_data/AA_Data.csv", skip = 4, na="N/A")
+AA_imported <- read.csv("~/Chem 313/soil_ICPMS_real/Soil_data/AA_Data.csv", skip = 4, na="HIGH")
 sample_key <- read.csv("~/Chem 313/soil_ICPMS_real/Soil_data/Sample_Key.csv", skip=0)
 
 view(AA_imported)
@@ -40,4 +40,8 @@ view(AA_merged_tidy)
 
 ```{r}
 write.csv(AA_merged_tidy, file = "~/Chem 313/soil_ICPMS_real/data/tidy_AA.csv")
+```
+
+```{r}
+#rm(list= ls() [!(ls() %in% c("sample_data", "AA_merged_tidy"))])
 ```

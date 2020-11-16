@@ -68,7 +68,7 @@ ICPMS_merged
 ```
 
 ```{r, warning=FALSE}
-rm(list=setdiff(ls(), "ICPMS_merged"))
+#rm(list=setdiff(ls(), "ICPMS_merged"))
 ```
 
 ```{r}

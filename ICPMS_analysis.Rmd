@@ -17,7 +17,7 @@ ICPMS_merged
 ```
 
 ```{r}
-sample_sites <- unique(filter(ICPMS_merged, Site!="MB", Site!="")$Site)
+sample_sites <- c("F", "QC", "D", "E", "C", "B", "A")
 metals_analyzed <- unique(ICPMS_merged$metal)
 
 sample_sites
@@ -76,7 +76,7 @@ sample_analysis <- function(unique_site){
       
       x <- (y-b)/m
       
-      rsd <- sample_data$RSD
+      rsd <- ((sample_data$RSD/100)*sample_data$CPS)
       cps <- sample_data$CPS
       
       e_yb <- sqrt((rsd)^2 + (b_e)^2)
@@ -92,7 +92,8 @@ sample_analysis <- function(unique_site){
       if (unique_site=="MB"){
         x <- mean(data$x)
         e_x <- sd(data$x)
-        concentration_data <- data_frame(metal = unique_metal, Site = unique_site, conc_dil = x, conc_dil_error = e_x)%>%
+         concentration_data <- data_frame(Sample.Key = sample_data$Sample.Key, Analyst = sample_data$Analyst, metal = unique_metal, Site = unique_site, conc_dil = x,
+                                         conc_dil_error = e_x)%>%
           rbind(concentration_data)
       }
     }
@@ -124,7 +125,9 @@ uncor_sample
 sample_data_mb <- NULL
 
 for (unique_metal in metals_analyzed){
-  MB_metal <- filter(MB, metal==unique_metal)
+  MB_metal <- filter(MB, metal==unique_metal)%>%
+    group_by(metal)%>%
+    summarise(conc_dil_error=sd(conc_dil), conc_dil=mean(conc_dil))
   sample_metal <- filter(uncor_sample, metal==unique_metal)
   conc_dil_blanked <- sample_metal$conc_dil-MB_metal$conc_dil
   
@@ -135,7 +138,9 @@ for (unique_metal in metals_analyzed){
     rbind(sample_data_mb)
 }
 
-sample_data_mb
+#sample_data_mb <- MB%>%
+  #mutate(conc_dil_blanked=NA, conc_dil_blanked_error=NA)%>%
+  #rbind(sample_data_mb)
 ```
 
 ```{r}
@@ -160,4 +165,9 @@ sample_data <- merge(ICPMS_merged, sample_data_mb)%>%
          -conc_dil_blanked_error,
          -conc_dil,
          -conc_dil_error)
+sample_data
+```
+
+```{r}
+#rm(list= ls() [!(ls() %in% c("sample_data", "MB"))])
 ```
